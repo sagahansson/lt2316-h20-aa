@@ -10,6 +10,7 @@ import os
 import xml.etree.ElementTree as ET
 import re
 from random import shuffle
+from collections import Counter
 
 pd.options.mode.chained_assignment = None
 
@@ -120,7 +121,7 @@ class DataLoader(DataLoaderBase):
                         split = 'test'
                     else:
                         split = 'train/dev'
-                    word_tpl = (sent_id, word, char_ids[i][0], char_ids[i][1], split) # one row in data_df 
+                    word_tpl = (sent_id, word, int(char_ids[i][0]), int(char_ids[i][1]), split) # one row in data_df 
                     data_df_list.append(word_tpl)
 
                 for entity in sentence: # creating the ner_df_list
@@ -134,13 +135,13 @@ class DataLoader(DataLoaderBase):
                         if len(char_span) > 2:
                             char_pairs = (list(zip(char_span[::2], char_span[1::2])))
                             for pair in char_pairs:
-                                entity_tpl = (sent_id, ent_type, pair[0], pair[1])
+                                entity_tpl = (sent_id, ent_type, int(pair[0]), int(pair[1])) # one row in ner_df
                                 ner_df_list.append(entity_tpl)
                         else:
                             ent_start_id, ent_end_id = char_span
                             ent_txt_one = ent_txt    
 
-                            entity_tpl = (sent_id, ent_type, ent_start_id, ent_end_id) 
+                            entity_tpl = (sent_id, ent_type, int(ent_start_id), int(ent_end_id)) # one row in ner_df
 
                             ner_df_list.append(entity_tpl)
 
@@ -163,11 +164,11 @@ class DataLoader(DataLoaderBase):
     def _parse_data(self, data_dir):
         
         allFiles = self.get_paths(data_dir)
-        self.vocab, data_df_list, ner_df_list  = self.open_xmls(allFiles)
+        vocab_list, data_df_list, ner_df_list  = self.open_xmls(allFiles)
         
         data_df = pd.DataFrame(data_df_list, columns=["sentence_id", "token", "char_start_id", "char_end_id", "split"])
         self.ner_df = pd.DataFrame(ner_df_list, columns=["sentence_id", "ner_id", "char_start_id", "char_end_id"])
-        w2i = self.word2int(self.vocab)
+        w2i = self.word2int(vocab_list)
         token_ids = self.get_token_ids(data_df['token'], w2i) # fetching token ids for all tokens in the dataframe
         data_df.insert(1, 'token_id', token_ids) # inserting token ids 
         data_df = data_df.drop(columns=['token']) # removing 'token' column
@@ -181,16 +182,23 @@ class DataLoader(DataLoaderBase):
         train_dev.extend(dev)
         shuffle(train_dev)
         traindev_df.loc[:, 'split'] = train_dev
-        self.data_df = traindev_df.append(test_df)
+        self.data_df = (traindev_df.append(test_df)).reset_index(drop=True)
         self.id2ner = {
             0 : 'drug',
             1 : 'drug_n',
             2 : 'group',
-            3 : 'brand'
+            3 : 'brand',
+            4 : 'other'
         }
+        sent_dict = Counter(list(data_df.sentence_id)) # counting occurences of sentence_id in data df = len of sentences
+        self.max_sample_length = max(sent_dict.values())
+        self.id2word = {v:k for k, v in w2i.items()}
+        self.vocab = list(w2i.keys())
 
 
     def get_y(self):
+        self.number_samples = round(len(self.vocab)/self.max_sample_length)
+        
         # Should return a tensor containing the ner labels for all samples in each split.
         # the tensors should have the following following dimensions:
         # (NUMBER_SAMPLES, MAX_SAMPLE_LENGTH)

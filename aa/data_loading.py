@@ -9,10 +9,13 @@ from nltk.tokenize import RegexpTokenizer
 import os
 import xml.etree.ElementTree as ET
 import re
-from random import shuffle
+from random import choice
+#from random import shuffle
 from collections import Counter
 
 pd.options.mode.chained_assignment = None
+
+device = torch.device("cuda:1" if torch.cuda.is_available() else 'cuda:2')
 
 class DataLoaderBase:
 
@@ -73,10 +76,9 @@ class DataLoader(DataLoaderBase):
 
     
     def get_paths(self, rootdir):
-        # fetches a list of absolute paths, given a dir with xml files
+        # fetches a list of absolute paths to all xml files in subdirectories in rootdir
         # BEHÖVS FÖR OPEN_XMLS
         file_paths = []
-
         for folder, _, files in os.walk(rootdir):
             for filename in files:
                 if filename.endswith('xml'):
@@ -86,124 +88,163 @@ class DataLoader(DataLoaderBase):
     def string_to_span(self, s):
         # creates a tokenized version and a span version of a string
         # BEHÖVS FÖR OPEN_XMLS
-        #s = (re.sub(r"[^A-Za-z\s]",'',s)).lower() # removes all non-alphanumerical characters LOL gör inte det
-        tokenizer = RegexpTokenizer("[\w'-]+|[^\w\s]+") # tokenizes words and punctuation except hyphens in compound words and apostrophes
+        punctuation = "-,.?!:;"
+        tokenizer = RegexpTokenizer("\s|:|;", gaps=True)
         tokenized = tokenizer.tokenize(s.lower())
+        tokenized = [word.strip(punctuation) if word[-1] in punctuation else word for word in tokenized] # removing punctuation if it's the last char in a word
         span = list(tokenizer.span_tokenize(s)) # gets the pythonic span i e (start, stop_but_not_including)
         new_span = []
         for tpl in span:
             new_span.append((tpl[0], (tpl[1]-1))) # to get non-pythonic span i e (start,last_char)
         return new_span, tokenized
 
+    def pad_sentences(self, sentences, max_length):
+        data_df_list = []
+        for sent in sentences:
+            split = sent[0][4]
+            pad_len = max_length - len(sent) # how many padding token are needed to make len(sent) == max_length
+            pad_rows = pad_len * [(0, 0, 0, 0, split)] # list of padding rows made to fit dataframe ie four 0's are for 'sent_id', 'token_id', 'char_start', 'char_end'
+            sent.extend(pad_rows)                      # if sent_id is specified it gets stuck in get_random_sample
+            data_df_list.extend(sent)
+        return data_df_list
+    
     def open_xmls(self, fileList):
 
-        vocab = []
+        #vocab = []
         data_df_list = [] 
         ner_df_list = []
-        ent2id = {
-            'drug'   : 0,
-            'drug_n' : 1,
-            'group'  : 2, 
-            'brand'  : 3
+        all_sentences = []
+        self.ner2id = {
+            'other/pad' : 0,
+            'drug'      : 1,
+            'drug_n'    : 2,
+            'group'     : 3, 
+            'brand'     : 4
         }
+        self.word2id = {}
 
         for file in fileList:
             tree = ET.parse(file)
             root = tree.getroot()
             for sentence in root:
+                one_sentence = []
                 sent_id = sentence.attrib['id']
-                sent_txt= sentence.attrib['text']
+                sent_txt = sentence.attrib['text']
+                if sent_txt == "": # to exclude completely empty sentences i e DDI-DrugBank.d228.s4 in Train/DrugBank/Fomepizole_ddi.xml
+                    continue
+                #unique_w = list(set(tokenized))
+                #vocab.extend(unique_w)
+                if 'test' in file.lower():
+                    split = 'test'
+                else:
+                    split = choice(["train", "train", "train", "train", "val"]) # making it a 20% chance that it's val and 80% chance that it's train
                 char_ids, tokenized = self.string_to_span(sent_txt)
-                unique_w = list(set(tokenized))
-                vocab.extend(unique_w)
                 for i, word in enumerate(tokenized): # creating data_df_list
-                    if 'test' in file.lower():
-                        split = 'test'
+                    if word in self.word2id.keys(): # make into function instead? # creating word2id, vocab
+                        word = self.word2id[word]
                     else:
-                        split = 'train/dev'
+                        w_id = 1 + len(self.word2id) # zero is pad
+                        self.word2id[word] = w_id
+                        word = w_id
                     word_tpl = (sent_id, word, int(char_ids[i][0]), int(char_ids[i][1]), split) # one row in data_df 
-                    data_df_list.append(word_tpl)
-
+                    one_sentence.append(word_tpl)
                 for entity in sentence: # creating the ner_df_list
                     if entity.tag == 'entity':
                         ent_txt = (entity.attrib['text']).lower()
                         ent_type = (entity.attrib['type']).lower()
-                        ent_type = ent2id[ent_type]
+                        ent_type = self.ner2id[ent_type]
                         char_offset = entity.attrib['charOffset']
-                        char_span = (re.sub(r"[^0-9]+",' ', char_offset)).split(' ')
-
+                        char_span = (re.sub(r"[^0-9]+",' ', char_offset)).split(' ') # substituting everything in char_offset that is not a number with a space
+                                                                                     # to be able to split on spaces 
                         if len(char_span) > 2:
                             char_pairs = (list(zip(char_span[::2], char_span[1::2])))
                             for pair in char_pairs:
-                                entity_tpl = (sent_id, ent_type, int(pair[0]), int(pair[1])) # one row in ner_df
+                                entity_tpl = (sent_id, ent_type, int(pair[0]), int(pair[1]))
                                 ner_df_list.append(entity_tpl)
                         else:
                             ent_start_id, ent_end_id = char_span
                             ent_txt_one = ent_txt    
-
-                            entity_tpl = (sent_id, ent_type, int(ent_start_id), int(ent_end_id)) # one row in ner_df
-
+                            entity_tpl = (sent_id, ent_type, int(ent_start_id), int(ent_end_id))
                             ner_df_list.append(entity_tpl)
+                all_sentences.append(one_sentence)
 
-        vocab = list(sorted(set(vocab)))
-        return vocab, data_df_list, ner_df_list
-    
-    
-    def word2int(self, vocabList):
-        # tar hela vocabet från open_xmls och ger tillbaka en dict med word : index
-        return {w:i for i,w in enumerate(sorted(vocabList))}
-    
-    
-    def get_token_ids(self, tokensList, vocab2idDict):
-        # efter data_df_list är en dataframe och efter vocab har blivit w2i
-        # tar data_df-kolumnen för tokens och dicten från w2i
-        # fetches token id from vocab2id dict
         
-        return [vocab2idDict[w] for w in tokensList] 
+        self.max_sample_length = max([len(x) for x in all_sentences])
+        data_df_list = self.pad_sentences(all_sentences, self.max_sample_length)
+        #vocab = list(sorted(set(vocab))) # behöver du verkligen vocab??? 
+        #return vocab, data_df_list, ner_df_list
+        return data_df_list, ner_df_list
     
     def _parse_data(self, data_dir):
         
         allFiles = self.get_paths(data_dir)
-        vocab_list, data_df_list, ner_df_list  = self.open_xmls(allFiles)
+        #vocab_list, data_df_list, ner_df_list  = self.open_xmls(allFiles)
+        data_df_list, ner_df_list = self.open_xmls(allFiles)
         
-        data_df = pd.DataFrame(data_df_list, columns=["sentence_id", "token", "char_start_id", "char_end_id", "split"])
-        self.ner_df = pd.DataFrame(ner_df_list, columns=["sentence_id", "ner_id", "char_start_id", "char_end_id"])
-        w2i = self.word2int(vocab_list)
-        token_ids = self.get_token_ids(data_df['token'], w2i) # fetching token ids for all tokens in the dataframe
-        data_df.insert(1, 'token_id', token_ids) # inserting token ids 
-        data_df = data_df.drop(columns=['token']) # removing 'token' column
-        test_df = data_df.loc[data_df.split == 'test'] # splitting df horizontally into test and train/dev
-        traindev_df = data_df.loc[data_df.split != 'test']
-        dev_len = len(test_df) # size of dev/val set is decided from how big the test set is
-        train_len = len(traindev_df) - dev_len # train is basically whatever is left
-        traindev_df.drop(columns=['split'])
-        train_dev = ['train'] * train_len # creating list containing train_len instances of 'train' 
-        dev = ['dev'] * dev_len # same as train_dev, but here instances of 'dev'
-        train_dev.extend(dev)
-        shuffle(train_dev)
-        traindev_df.loc[:, 'split'] = train_dev
-        self.data_df = (traindev_df.append(test_df)).reset_index(drop=True)
-        self.id2ner = {
-            0 : 'drug',
-            1 : 'drug_n',
-            2 : 'group',
-            3 : 'brand',
-            4 : 'other'
-        }
-        sent_dict = Counter(list(data_df.sentence_id)) # counting occurences of sentence_id in data df = len of sentences
-        self.max_sample_length = max(sent_dict.values())
-        self.id2word = {v:k for k, v in w2i.items()}
-        self.vocab = list(w2i.keys())
+        self.data_df = pd.DataFrame(data_df_list, columns=['sentence_id', 'token_id', 'char_start_id', 'char_end_id', 'split'])
+        self.ner_df = pd.DataFrame(ner_df_list, columns=['sentence_id', 'ner_id', 'char_start_id', 'char_end_id']) # ner_id = entity type
+        self.word2id['padding'] = 0 # do this another way
+        self.id2word = {v:k for k, v in self.word2id.items()}
+        self.id2ner = {v:k for k, v in self.ner2id.items()}
+        
+        self.vocab = list(self.word2id.keys())
 
 
+    def get_ners(df):
+
+        data_sentence_ids = list(df.sentence_id)
+        data_start = list(df.char_start_id)
+        data_end = list(df.char_end_id)
+        data_token = list(df.token_id)
+        data_tpls = [(data_sentence_ids[i], data_token[i], data_start[i], data_end[i]) for i, elem in enumerate(data_sentence_ids)]
+
+        labellist = []
+        for tpl in data_tpls: # for every word in data_df, give it a label
+            data_sent_id, data_token, data_char_start, data_char_end = tpl
+            tpl = (data_sent_id, data_char_start, data_char_end)
+            if data_token == 0: # if it's padding
+                label = 0 # add 0 label for padding/other
+                labellist.append(label)
+                continue
+            for i, ner in enumerate(self.ner_tpls): # enumerate ensures that we get correct label for row
+                ner_sent_id, ner_char_start, ner_char_end = ner
+                if tpl == ner: # flytta upp utanför loopen #if ner in data_tpls: till line 16
+                    label = self.ner_id[i]
+                    continue
+                if data_sent_id == ner_sent_id:
+                    if (data_char_start >= ner_char_start) and (data_char_end <= ner_char_end):
+                        label = self.ner_id[i]
+                    else:
+                        label = 0
+                else:
+                    pass
+            labellist.append(label)
+        self.labellists = [labellist[x:x+102] for x in range(0, len(labellist),102)] # CHANGE TO SELF.MAX_SAMPLE_LENGTH
+        
+        
     def get_y(self):
-        self.number_samples = round(len(self.vocab)/self.max_sample_length)
+        #self.number_samples = round(len(self.vocab)/self.max_sample_length)
         
+        ner_sentence_ids = list(ner_df.sentence_id)
+        ner_start = list(ner_df.char_start_id)
+        ner_end = list(ner_df.char_end_id)
+        self.ner_id = list(ner_df.ner_id)
+        self.ner_tpls = [(ner_sentence_ids[i], ner_start[i], ner_end[i]) for i, elem in enumerate(ner_sentence_ids)]
+        
+        test_df = self.data_df.loc[self.data_df.split == 'test']
+        train_df = self.data_df.loc[self.data_df.split == 'train']
+        val_df = self.data_df.loc[self.data_df.split == 'val']
+        
+        self.test_y = torch.Tensor(self.get_y(test_df)).to(device)
+        self.train_y = torch.Tensor(self.get_y(train_df)).to(device)
+        self.val_y = torch.Tensor(self.get_y(val_df)).to(device)
         # Should return a tensor containing the ner labels for all samples in each split.
         # the tensors should have the following following dimensions:
         # (NUMBER_SAMPLES, MAX_SAMPLE_LENGTH)
         # NOTE! the labels for each split should be on the GPU
+        
         pass
+        
 
     def plot_split_ner_distribution(self):
         # should plot a histogram displaying ner label counts for each split

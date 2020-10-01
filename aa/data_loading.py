@@ -12,6 +12,7 @@ import re
 from random import choice
 #from random import shuffle
 from collections import Counter
+import matplotlib.pyplot as plt
 
 pd.options.mode.chained_assignment = None
 
@@ -190,7 +191,7 @@ class DataLoader(DataLoaderBase):
         self.vocab = list(self.word2id.keys())
 
 
-    def get_ners(df):
+    def get_ners(self, df):
 
         data_sentence_ids = list(df.sentence_id)
         data_start = list(df.char_start_id)
@@ -219,36 +220,52 @@ class DataLoader(DataLoaderBase):
                 else:
                     pass
             labellist.append(label)
-        self.labellists = [labellist[x:x+102] for x in range(0, len(labellist),102)] # CHANGE TO SELF.MAX_SAMPLE_LENGTH
+        nested_lists = [labellist[x:x+(self.max_sample_length)] for x in range(0, len(labellist), (self.max_sample_length))] # same as labellist but divided into number of sentences
+        return labellist, nested_lists
+    
         
         
     def get_y(self):
         #self.number_samples = round(len(self.vocab)/self.max_sample_length)
         
-        ner_sentence_ids = list(ner_df.sentence_id)
-        ner_start = list(ner_df.char_start_id)
-        ner_end = list(ner_df.char_end_id)
-        self.ner_id = list(ner_df.ner_id)
+        ner_sentence_ids = list(self.ner_df.sentence_id)
+        ner_start = list(self.ner_df.char_start_id)
+        ner_end = list(self.ner_df.char_end_id)
+        self.ner_id = list(self.ner_df.ner_id)
         self.ner_tpls = [(ner_sentence_ids[i], ner_start[i], ner_end[i]) for i, elem in enumerate(ner_sentence_ids)]
         
-        test_df = self.data_df.loc[self.data_df.split == 'test']
         train_df = self.data_df.loc[self.data_df.split == 'train']
+        test_df = self.data_df.loc[self.data_df.split == 'test']
         val_df = self.data_df.loc[self.data_df.split == 'val']
         
-        self.test_y = torch.Tensor(self.get_y(test_df)).to(device)
-        self.train_y = torch.Tensor(self.get_y(train_df)).to(device)
-        self.val_y = torch.Tensor(self.get_y(val_df)).to(device)
+        self.train_labels, self.train_get_y = self.get_ners(train_df)
+        self.test_labels, self.test_get_y = self.get_ners(test_df)
+        self.val_labels, self.val_get_y = self.get_ners(val_df)
+        
+        self.train_y = torch.Tensor(self.train_get_y).to(device)
+        self.test_y = torch.Tensor(self.test_get_y).to(device)
+        self.val_y = torch.Tensor(self.val_get_y).to(device)
         # Should return a tensor containing the ner labels for all samples in each split.
         # the tensors should have the following following dimensions:
         # (NUMBER_SAMPLES, MAX_SAMPLE_LENGTH)
         # NOTE! the labels for each split should be on the GPU
         
+        print('get_y done')
         pass
         
 
     def plot_split_ner_distribution(self):
-        # should plot a histogram displaying ner label counts for each split
+        
+        self.get_y()
+        
+        train_counts = Counter([self.id2ner[label] for label in self.train_labels if label != 0]) # removing 0 (non-entity/padding) because it doesn't show distribution of other labels
+        test_counts = Counter([self.id2ner[label] for label in self.test_labels if label != 0])
+        val_counts = Counter([self.id2ner[label] for label in self.val_labels if label != 0])
+        pd.DataFrame([train_counts, test_counts, val_counts], index=['train', 'test', 'val']).plot(kind='bar')
+        
+        plt.show()
         pass
+        # should plot a histogram displaying ner label counts for each split
 
 
     def plot_sample_length_distribution(self):

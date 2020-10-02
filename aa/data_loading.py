@@ -12,11 +12,11 @@ import re
 from random import choice
 #from random import shuffle
 from collections import Counter
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 pd.options.mode.chained_assignment = None
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else 'cuda:2')
+device = torch.device("cuda:1")
 
 class DataLoaderBase:
 
@@ -78,7 +78,7 @@ class DataLoader(DataLoaderBase):
     
     def get_paths(self, rootdir):
         # fetches a list of absolute paths to all xml files in subdirectories in rootdir
-        # BEHÖVS FÖR OPEN_XMLS
+        # BEHÖVS FÖR parse_xmls
         file_paths = []
         for folder, _, files in os.walk(rootdir):
             for filename in files:
@@ -88,7 +88,7 @@ class DataLoader(DataLoaderBase):
     
     def string_to_span(self, s):
         # creates a tokenized version and a span version of a string
-        # BEHÖVS FÖR OPEN_XMLS
+        # BEHÖVS FÖR parse_xmls
         punctuation = "-,.?!:;"
         tokenizer = RegexpTokenizer("\s|:|;", gaps=True)
         tokenized = tokenizer.tokenize(s.lower())
@@ -109,7 +109,7 @@ class DataLoader(DataLoaderBase):
             data_df_list.extend(sent)
         return data_df_list
     
-    def open_xmls(self, fileList):
+    def parse_xmls(self, fileList):
 
         #vocab = []
         data_df_list = [] 
@@ -179,12 +179,12 @@ class DataLoader(DataLoaderBase):
     def _parse_data(self, data_dir):
         
         allFiles = self.get_paths(data_dir)
-        #vocab_list, data_df_list, ner_df_list  = self.open_xmls(allFiles)
-        data_df_list, ner_df_list = self.open_xmls(allFiles)
+        #vocab_list, data_df_list, ner_df_list  = self.parse_xmls(allFiles)
+        data_df_list, ner_df_list = self.parse_xmls(allFiles)
         
         self.data_df = pd.DataFrame(data_df_list, columns=['sentence_id', 'token_id', 'char_start_id', 'char_end_id', 'split'])
         self.ner_df = pd.DataFrame(ner_df_list, columns=['sentence_id', 'ner_id', 'char_start_id', 'char_end_id']) # ner_id = entity type
-        self.word2id['padding'] = 0 # do this another way
+        self.word2id['pad'] = 0 
         self.id2word = {v:k for k, v in self.word2id.items()}
         self.id2ner = {v:k for k, v in self.ner2id.items()}
         
@@ -217,8 +217,6 @@ class DataLoader(DataLoaderBase):
                         label = self.ner_id[i]
                     else:
                         label = 0
-                else:
-                    pass
             labellist.append(label)
         nested_lists = [labellist[x:x+(self.max_sample_length)] for x in range(0, len(labellist), (self.max_sample_length))] # same as labellist but divided into number of sentences
         return labellist, nested_lists
@@ -249,23 +247,23 @@ class DataLoader(DataLoaderBase):
         # the tensors should have the following following dimensions:
         # (NUMBER_SAMPLES, MAX_SAMPLE_LENGTH)
         # NOTE! the labels for each split should be on the GPU
+
         
         print('get_y done')
-        pass
+        return self.train_y, self.val_y, self.test_y
         
 
     def plot_split_ner_distribution(self):
-        
+        # plots a histogram displaying ner label counts for each split
         self.get_y()
-        
-        train_counts = Counter([self.id2ner[label] for label in self.train_labels if label != 0]) # removing 0 (non-entity/padding) because it doesn't show distribution of other labels
-        test_counts = Counter([self.id2ner[label] for label in self.test_labels if label != 0])
-        val_counts = Counter([self.id2ner[label] for label in self.val_labels if label != 0])
+
+        train_counts = Counter([self.id2ner[l] for l in self.train_labels if l != 0]) # removing 0 (non-entity/padding) because it doesn't show distribution of other labels
+        test_counts = Counter([self.id2ner[l] for l in self.test_labels if l != 0])
+        val_counts = Counter([self.id2ner[l] for l in self.val_labels if l != 0])
         pd.DataFrame([train_counts, test_counts, val_counts], index=['train', 'test', 'val']).plot(kind='bar')
         
-        plt.show()
         pass
-        # should plot a histogram displaying ner label counts for each split
+        
 
 
     def plot_sample_length_distribution(self):

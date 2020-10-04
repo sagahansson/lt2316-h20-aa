@@ -10,9 +10,8 @@ import os
 import xml.etree.ElementTree as ET
 import re
 from random import choice
-#from random import shuffle
 from collections import Counter
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 pd.options.mode.chained_assignment = None
 
@@ -138,7 +137,7 @@ class DataLoader(DataLoaderBase):
                 else:
                     split = choice(["train", "train", "train", "train", "val"]) # making it a 20% chance that it's val and 80% chance that it's train
                 char_ids, tokenized = self.string_to_span(sent_txt)
-                for i, word in enumerate(tokenized): # creating data_df_list
+                    for i, word in enumerate(tokenized): # creating data_df_list, one_sentence
                     if word in self.word2id.keys(): # creating word2id, vocab
                         word = self.word2id[word]
                     else:
@@ -149,20 +148,18 @@ class DataLoader(DataLoaderBase):
                     one_sentence.append(word_tpl)
                 for entity in sentence: # creating the ner_df_list
                     if entity.tag == 'entity':
-                        ent_txt = (entity.attrib['text']).lower()
                         ent_type = (entity.attrib['type']).lower()
                         ent_type = self.ner2id[ent_type]
                         char_offset = entity.attrib['charOffset']
                         char_span = (re.sub(r"[^0-9]+",' ', char_offset)).split(' ') # substituting everything in char_offset that is not a number with a space
                                                                                      # to be able to split on spaces 
-                        if len(char_span) > 2:
+                        if len(char_span) > 2: # for multi-word entities 
                             char_pairs = (list(zip(char_span[::2], char_span[1::2])))
                             for pair in char_pairs:
                                 entity_tpl = (sent_id, ent_type, int(pair[0]), int(pair[1]))
                                 ner_df_list.append(entity_tpl)
                         else:
-                            ent_start_id, ent_end_id = char_span
-                            #ent_txt_one = ent_txt    
+                            ent_start_id, ent_end_id = char_span    
                             entity_tpl = (sent_id, ent_type, int(ent_start_id), int(ent_end_id))
                             ner_df_list.append(entity_tpl)
                 all_sentences.append(one_sentence)
@@ -273,10 +270,6 @@ class DataLoader(DataLoaderBase):
         
         # removing 0's (padding), converting to series with index 'sentence_id' and values 'token_id' (which second column doesn't matter), group by 'sentence_id' and count, convert counts to list
         no_0s = self.data_df.loc[self.data_df.token_id != 0].set_index('sentence_id')['token_id'].groupby('sentence_id').count().to_list()
-        
-        import matplotlib.pyplot as plt
- 
- 
 
         plt.style.use('ggplot')
         plt.rcParams['figure.figsize'] = [20/2.54, 16/2.54]

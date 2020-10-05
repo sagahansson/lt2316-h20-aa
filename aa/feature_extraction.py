@@ -3,11 +3,10 @@ import torch
 import torch.nn as nn
 device = torch.device('cuda:1')
 
-def get_tensors(df, max_sample_length, id2word, more_features, w_embed):
+def get_tensors(df, max_sample_length, id2word, more_features, embeddings):
     # constructs the feature tensors
     # helper to extract_features
     
-    embeddings = nn.Embedding(len(id2word), w_embed)
     tokens = list(df['token_id'])
     sentences = [tokens[x:x+(max_sample_length)] for x in range(0, len(tokens),(max_sample_length))] # splitting the entire token list into a nested list where each inner list represents a sentence
     sentences = [tokens[x:x+(max_sample_length)] for x in range(0, len(tokens),(max_sample_length))]
@@ -41,14 +40,16 @@ def extract_features(data:pd.DataFrame, max_sample_length:int, id2word:dict, mor
     # feature tensor consists of word embeddings (where w_embed decided dimensionality of embeddings) and,
     # if more_features=True, word length and whether the word contains only alphabetical characters (1) or not (0)
     
+    embeddings = nn.Embedding(len(id2word), w_embed)
+    
     # splitting the data into train, test, val
     train_df = data.loc[data.split == 'train']
     test_df = data.loc[data.split == 'test']
     val_df = data.loc[data.split == 'val']
     
     # retrieving feature tensors with the help of get_tensors
-    train_X = get_tensors(train_df, max_sample_length, id2word, more_features=more_features, w_embed=w_embed)
-    test_X = get_tensors(test_df, max_sample_length, id2word, more_features=more_features, w_embed=w_embed)
-    val_X = get_tensors(val_df, max_sample_length, id2word, more_features=more_features, w_embed=w_embed)
+    train_X = get_tensors(train_df, max_sample_length, id2word, more_features=more_features, embeddings=embeddings)
+    test_X = get_tensors(test_df, max_sample_length, id2word, more_features=more_features, embeddings=embeddings)
+    val_X = get_tensors(val_df, max_sample_length, id2word, more_features=more_features, embeddings=embeddings)
     
     return train_X.to(device), val_X.to(device), test_X.to(device)

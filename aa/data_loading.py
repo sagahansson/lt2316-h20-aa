@@ -137,7 +137,7 @@ class DataLoader(DataLoaderBase):
                 else:
                     split = choice(["train", "train", "train", "train", "val"]) # making it a 20% chance that it's val and 80% chance that it's train
                 char_ids, tokenized = self.string_to_span(sent_txt)
-                    for i, word in enumerate(tokenized): # creating data_df_list, one_sentence
+                for i, word in enumerate(tokenized): # creating data_df_list, one_sentence
                     if word in self.word2id.keys(): # creating word2id, vocab
                         word = self.word2id[word]
                     else:

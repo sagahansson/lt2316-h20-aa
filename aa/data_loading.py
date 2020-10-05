@@ -285,7 +285,7 @@ class DataLoader(DataLoaderBase):
     def plot_ner_per_sample_distribution(self):        
         # plots a histogram displaying the distribution of number of NERs in sentences
         
-        ners_per_sentence = list(self.ner_df.set_index('sentence_id')['ner_id'].groupby(['sentence_id']).cumsum().to_dict().values()) # similar to plot_sample_length_distribution, but not removing 0's (since they don't exist as labels in ner_df), and getting the cumulative sum for each sentence;
+        ners_per_sentence = self.ner_df.set_index('sentence_id')['ner_id'].groupby(['sentence_id']).count().to_list() # similar to plot_sample_length_distribution, but not removing 0's (since they don't exist as labels in ner_df) 
         no_ners = (self.data_df['sentence_id'].nunique()) - (self.ner_df['sentence_id'].nunique()) # number of sentences with no ners
         no_ners = [0] * no_ners 
         ners_per_sentence.extend(no_ners) # adding the same number 0's as sentences that don't contain ners

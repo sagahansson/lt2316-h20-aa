@@ -12,6 +12,7 @@ import re
 from random import choice
 from collections import Counter
 import matplotlib.pyplot as plt
+from venn import venn
 
 pd.options.mode.chained_assignment = None
 
@@ -302,9 +303,14 @@ class DataLoader(DataLoaderBase):
 
 
     def plot_ner_cooccurence_venndiagram(self):
-        # FOR BONUS PART!!
-        # Should plot a ven-diagram displaying how the ner labels co-occur
-        pass
+        # plots a ven-diagram displaying how the ner labels co-occur
+        
+        df_dict = self.ner_df.groupby('ner_id').apply(lambda x: set(x['sentence_id'])).to_dict() # makes a dictionary of {label1 : (sentence1, sentence2, ...)}
+        for i, ner in self.id2ner.items(): # changing the label id's to label names
+            if i in df_dict:
+                df_dict[self.id2ner[i]] = df_dict.pop(i)
+        
+        venn(df_dict)
 
 
 

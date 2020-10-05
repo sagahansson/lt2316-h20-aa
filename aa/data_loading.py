@@ -187,7 +187,7 @@ class DataLoader(DataLoaderBase):
 
 
     def get_ners(self, df):
-        # gets the labels with the help of ner_id
+        # constructs label tensors with the help of ner_id
         # returns labellist: a list of all labels, and nested_lists: a list of list where each inner list represents a sentence. Each inner list contains labels for that particular sentence
         #helper to get_y
         
@@ -223,7 +223,6 @@ class DataLoader(DataLoaderBase):
         
     def get_y(self):
         # returns a tensor containing the ner labels for all samples in each split.
-        # the tensors should have the following following dimensions:
         
         # constructing ner tuples (sentence_id, ner_start, ner_end) and list of ner_ids
         ner_sentence_ids = list(self.ner_df.sentence_id)
@@ -267,25 +266,39 @@ class DataLoader(DataLoaderBase):
 
 
     def plot_sample_length_distribution(self):
+        #plots a histogram displaying the distribution of sample lengths in number tokens
         
-        # removing 0's (padding), converting to series with index 'sentence_id' and values 'token_id' (which second column doesn't matter), group by 'sentence_id' and count, convert counts to list
-        no_0s = self.data_df.loc[self.data_df.token_id != 0].set_index('sentence_id')['token_id'].groupby('sentence_id').count().to_list()
+        # removing 0's (padding), converting to series with index 'sentence_id' and values 'token_id' (which second column doesn't matter), group by 'sentence_id' and count, convert counts to list. converting to series is done to enable converting to list of counts
+        sentence_length = self.data_df.loc[self.data_df.token_id != 0].set_index('sentence_id')['token_id'].groupby('sentence_id').count().to_list()
 
-        plt.style.use('ggplot')
-        plt.rcParams['figure.figsize'] = [20/2.54, 16/2.54]
-        plt.hist(no_0s, bins=45, color='#C25A7C')
+        #plotting
+        plt.style.use('ggplot') # plot style
+        plt.rcParams['figure.figsize'] = [20/2.54, 16/2.54] # making plot bigger
+        plt.hist(sentence_length, bins=45, color='#C25A7C')
         plt.xlabel('Length of sentence')
         plt.ylabel('No. of sentences')
         plt.show()
         
-        pass
+        
 
 
     def plot_ner_per_sample_distribution(self):        
-        # FOR BONUS PART!!
-        # Should plot a histogram displaying the distribution of number of NERs in sentences
-        # e.g. how many sentences has 1 ner, 2 ner and so on
-        pass
+        # plots a histogram displaying the distribution of number of NERs in sentences
+        
+        ners_per_sentence = list(self.ner_df.set_index('sentence_id')['ner_id'].groupby(['sentence_id']).cumsum().to_dict().values()) # similar to plot_sample_length_distribution, but not removing 0's (since they don't exist as labels in ner_df), and getting the cumulative sum for each sentence;
+        no_ners = (self.data_df['sentence_id'].nunique()) - (self.ner_df['sentence_id'].nunique()) # number of sentences with no ners
+        no_ners = [0] * no_ners 
+        ners_per_sentence.extend(no_ners) # adding the same number 0's as sentences that don't contain ners
+        
+        #plotting
+        plt.style.use('ggplot')
+        plt.rcParams['figure.figsize'] = [20/2.54, 16/2.54]
+        plt.hist(ners_per_sentence, bins=45, color='#5ac26c')
+        plt.xlabel('No. of ners')
+        plt.ylabel('No. of sentences')
+        plt.show()
+        
+
 
 
     def plot_ner_cooccurence_venndiagram(self):

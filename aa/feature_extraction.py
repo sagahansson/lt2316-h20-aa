@@ -9,7 +9,6 @@ def get_tensors(df, max_sample_length, id2word, more_features, embeddings):
     
     tokens = list(df['token_id'])
     sentences = [tokens[x:x+(max_sample_length)] for x in range(0, len(tokens),(max_sample_length))] # splitting the entire token list into a nested list where each inner list represents a sentence
-    sentences = [tokens[x:x+(max_sample_length)] for x in range(0, len(tokens),(max_sample_length))]
     feat_sentences = [] # will be nested list where each inner list represents a sentence; each inner list contains feature tensors for each word
 
     for sentence in sentences:

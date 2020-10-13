@@ -181,7 +181,7 @@ class DataLoader(DataLoaderBase):
         self.ner_df = pd.DataFrame(ner_df_list, columns=['sentence_id', 'ner_id', 'char_start_id', 'char_end_id'])
         
         # adding 'pad' to word2id, reversing dictionaries, getting vocab
-        self.word2id['pad'] = 0 
+        self.word2id['<pad>'] = 0 
         self.id2word = {v:k for k, v in self.word2id.items()}
         self.id2ner = {v:k for k, v in self.ner2id.items()}
         self.vocab = list(self.word2id.keys())

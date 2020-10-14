@@ -8,7 +8,7 @@ device = torch.device('cuda:1')
 
 
 def get_tags(sentence, i, pad_id, new_id, last_w_id):
-    # gets preceding and succeeding pos tags for word at index i
+    # gets preceding and succeeding pos tags for word at index i in sentence
     
     if i != 0: 
         if sentence[i-1][0] != '<pad>': # whenever preceeding word is not '<pad>'
@@ -74,8 +74,7 @@ def extract_features(data:pd.DataFrame, max_sample_length:int, id2word:dict):
     # getting all pos tags, create dict mapping pos tag to numbers
     tags = tagdict.keys()
     nums = list(range(len(tagdict.keys())))
-    zipped = zip(tags, nums)
-    tag2id = {tag:num for tag, num in zipped} # pos tag to ids to convert into tensors
+    tag2id = {tag:num for num, tag in enumerate(tags)} # pos tag to ids to convert into tensors
     
     new_id = torch.tensor([float(max(tag2id.values()) + 1)]) # id for when there is no preceding or succeeding word
     pad_id = torch.tensor([float(max(tag2id.values()) + 2)]) # id for when the token is '<pad>'
